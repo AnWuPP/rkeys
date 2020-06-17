@@ -49,8 +49,50 @@ local wm = require 'windows.message'
 local bitex = require 'bitex'
 
 local tCurKeys = {}
-local tModKeys = {[vkeys.VK_MENU] = true, [vkeys.VK_SHIFT] = true, [vkeys.VK_CONTROL] = true}
-local tMessageTrigger = {[wm.WM_KEYDOWN] = true, [wm.WM_SYSKEYDOWN] = true, [wm.WM_KEYUP] = true, [wm.WM_SYSKEYUP] = true}
+local tModKeys = { [vkeys.VK_MENU] = true, [vkeys.VK_SHIFT] = true, [vkeys.VK_CONTROL] = true }
+local tModKeysList = { vkeys.VK_MENU, vkeys.VK_LMENU, vkeys.VK_RMENU, vkeys.VK_SHIFT, vkeys.VK_RSHIFT, vkeys.VK_LSHIFT, vkeys.VK_CONTROL, vkeys.VK_LCONTROL, vkeys.VK_RCONTROL }
+local tMessageTrigger = {
+                        [wm.WM_KEYDOWN] = true,
+                        [wm.WM_SYSKEYDOWN] = true,
+                        [wm.WM_KEYUP] = true,
+                        [wm.WM_SYSKEYUP] = true,
+                        [wm.WM_LBUTTONDOWN] = true,
+                        [wm.WM_LBUTTONDBLCLK] = true,
+                        [wm.WM_LBUTTONUP] = true,
+                        [wm.WM_RBUTTONDOWN] = true,
+                        [wm.WM_RBUTTONDBLCLK] = true,
+                        [wm.WM_RBUTTONUP] = true,
+                        [wm.WM_MBUTTONDOWN] = true,
+                        [wm.WM_MBUTTONDBLCLK] = true,
+                        [wm.WM_MBUTTONUP] = true,
+                        [wm.WM_XBUTTONDOWN] = true,
+                        [wm.WM_XBUTTONDBLCLK] = true,
+                        [wm.WM_XBUTTONUP] = true
+                     }
+local tRewriteMouseKeys = {
+                           [wm.WM_LBUTTONDOWN] = vkeys.VK_LBUTTON,
+                           [wm.WM_LBUTTONUP] = vkeys.VK_LBUTTON,
+                           [wm.WM_RBUTTONDOWN] = vkeys.VK_RBUTTON,
+                           [wm.WM_RBUTTONUP] = vkeys.VK_RBUTTON,
+                           [wm.WM_MBUTTONDOWN] = vkeys.VK_MBUTTON,
+                           [wm.WM_MBUTTONUP] = vkeys.VK_MBUTTON,
+                        }
+local tXButtonMouseData = {
+   vkeys.VK_XBUTTON1,
+   vkeys.VK_XBUTTON2
+}
+local tDownMessages = {
+                        [wm.WM_KEYDOWN] = true,
+                        [wm.WM_SYSKEYDOWN] = true,
+                        [wm.WM_LBUTTONDOWN] = true,
+                        [wm.WM_RBUTTONDOWN] = true,
+                        [wm.WM_MBUTTONDOWN] = true,
+                        [wm.WM_XBUTTONDOWN] = true,
+                        [wm.WM_LBUTTONDBLCLK] = true,
+                        [wm.WM_RBUTTONDBLCLK] = true,
+                        [wm.WM_MBUTTONDBLCLK] = true,
+                        [wm.WM_XBUTTONDBLCLK] = true,
+                     }
 local tHotKeys = {}
 local tActKeys = {}
 local hkId = 0
@@ -58,15 +100,23 @@ local mod = {}
 mod._VERSION = "2.0.0"
 mod._MODKEYS = tModKeys
 mod._LOCKKEYS = false
+local HIWORD = function(param)
+	return bit.rshift(bit.band(param, 0xffff0000), 16);
+end
 
 addEventHandler("onWindowMessage", function (message, wparam, lparam)
    if tMessageTrigger[message] then
       local scancode = bitex.bextract(lparam, 16, 8)
       local keystate = bitex.bextract(lparam, 30, 1)
       local keyex = bitex.bextract(lparam, 24, 1)
+      if message == wm.WM_XBUTTONDOWN or message == wm.WM_XBUTTONUP or message == wm.WM_XBUTTONDBLCLK then
+         local btn = HIWORD(wparam)
+         wparam = tXButtonMouseData[btn]
+      elseif tRewriteMouseKeys[message] then
+         wparam = tRewriteMouseKeys[message]
+      end
       local keydown = mod.isKeyExist(wparam)
-      print(scancode, keyex)
-      if message == wm.WM_KEYDOWN or message == wm.WM_SYSKEYDOWN then
+      if tDownMessages[message] then
          if not keydown and keystate == 0 then
             table.insert(tCurKeys, wparam)
             if tModKeys[wparam] then
@@ -77,15 +127,23 @@ addEventHandler("onWindowMessage", function (message, wparam, lparam)
             end
          end
          for k, v in ipairs(tHotKeys) do
-            if v.aType ~= 3 and (tActKeys[v.id] == nil or v.aType == 2) and ((v.aType == 1 and keystate == 0) or v.aType == 2) and mod.isKeyComboExist(v.keys) then
-               v.callback(v)
+            if v.aType ~= 3 and (tActKeys[v.id] == nil or v.aType == 2)
+               and ((v.aType == 1 and keystate == 0) or v.aType == 2)
+               and mod.isKeyComboExist(v.keys)
+               and (not mod.isKeysExist(tModKeysList, v.keys) and not mod.isKeysExist(tModKeysList) or mod.isKeysExist(tModKeysList, v.keys))
+               and (mod.onHotKey == nil or (mod.onHotKey and mod.onHotKey(v.id, v) ~= false))
+            then
+               lua_thread.create(function()
+                  wait(0)
+                  v.callback(v)
+               end)
                tActKeys[v.id] = true
             end
-            if v.isBlock and (tActKeys[v.id] or v.aType == 2) then
+            if v.isBlock and (tActKeys[v.id] or v.aType == 2) or (tActKeys[v.id] and not v.isBlock and mod._LOCKKEYS) then
                consumeWindowMessage()
             end
          end
-      elseif message == wm.WM_KEYUP or message == wm.WM_SYSKEYUP then
+      else
          for k, v in ipairs(tHotKeys) do
             if v.aType == 3 and keystate == 1 and mod.isKeyComboExist(v.keys) then
                v.callback(v)
@@ -123,7 +181,7 @@ function mod.registerHotKey(keycombo, activationType, isBlock_or_callback, callb
       aType = activationType,
       callback = type(isBlock_or_callback) == "function" and isBlock_or_callback or callback,
       id = newId,
-      isBlock = type(isBlock_or_callback) == "boolean" and isBlock_or_callback or mod._LOCKKEYS
+      isBlock = type(isBlock_or_callback) == "boolean" and isBlock_or_callback or false
    }
    hkId = hkId + 1
    return newId
@@ -262,8 +320,23 @@ end
 function mod.isKeyExist(keyid, keylist)
    keylist = keylist or tCurKeys
    for k, v in ipairs(keylist) do
-      if v == keyid then
+      if tonumber(v) == tonumber(keyid) then
          return true
+      end
+   end
+   return false
+end
+
+--[[
+   »щет keyid в списке keylist. ¬ отличии от isKeyComboExist не ищет несколько клавиш, а только одну с указанной датой.
+]]
+function mod.isKeysExist(keyids, keylist)
+   keylist = keylist or tCurKeys
+   for k, v in ipairs(keyids) do
+      for kk, vv in ipairs(keylist) do
+         if v == vv then
+            return true
+         end
       end
    end
    return false
