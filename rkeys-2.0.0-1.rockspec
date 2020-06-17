@@ -13,5 +13,7 @@ dependencies = {
 }
 build = {
    type = "builtin",
-   modules = {}
+   modules = {
+      bind = "lua/rkeys.lua"
+   }
 }
