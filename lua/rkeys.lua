@@ -80,7 +80,7 @@ local tRewriteMouseKeys = {
                            [wm.WM_MBUTTONUP] = vkeys.VK_MBUTTON,
                         }
 local tXButtonMessage = {
-                           [wm.WM_MBUTTONUP] = true,
+                           [wm.WM_XBUTTONUP] = true,
                            [wm.WM_XBUTTONDOWN] = true,
                            [wm.WM_XBUTTONDBLCLK] = true,
                         }
@@ -105,17 +105,23 @@ local tHotKeys = {}
 local tActKeys = {}
 local hkId = 0
 local mod = {}
-mod._VERSION = "2.0.0"
-mod._MODKEYS = tModKeys
+--- Текущая версия модуля
+mod._VERSION = "2.1.1"
+--- Список клавиш модификаторов включая расширеные версии
+mod._MODKEYS = tModKeysList
+--- Определяет нужно ли блокировать нажатия для окна при нажатии любого зарегистрированного сочетания
 mod._LOCKKEYS = false
+--- Псевдо-клавиши для WM_MOUSEWHEEL
 mod.vkeys = {
    VK_WHEELDOWN = 0x100,
    VK_WHEELUP = 0x101
 }
+--- Названия псевдо-клавиш
 mod.vkeys.names = {
    [mod.vkeys.VK_WHEELDOWN] = "Mouse Wheel Down",
    [mod.vkeys.VK_WHEELUP] = "Mouse Wheel Up",
 }
+
 local id_to_name = function(id)
    local name = vkeys.id_to_name(id) or mod.vkeys.names[id]
    return name
@@ -211,6 +217,7 @@ addEventHandler("onWindowMessage", function (message, wparam, lparam)
    end
 end)
 
+--- Регистрирует новое сочетание клавиш. Параметр isBlock можно опустить
 ---@param keycombo table
 ---@param activationType integer
 ---@param isBlock_or_callback boolean|function
@@ -229,9 +236,9 @@ function mod.registerHotKey(keycombo, activationType, isBlock_or_callback, callb
    return newId
 end
 
---[[
-   Проверяет существует ли указанное комбо. Первым параметром возвращает результат проверки, вторым количество найденых комбо.
-]]
+--- Проверяет существует ли указанное комбо. Первым параметром возвращает результат проверки, вторым количество найденых комбо.
+---@param keycombo_or_id table|integer
+---@return boolean,integer
 function mod.isHotKeyDefined(keycombo_or_id)
    local bool = false
    local count = 0
@@ -253,9 +260,9 @@ function mod.isHotKeyDefined(keycombo_or_id)
    return bool, count
 end
 
---[[
-   Возвращает данные хоткея по ID или комбо клавиш. Возвращает результат поиска и таблицу данных.
-]]
+--- Возвращает данные хоткея по ID или комбо клавиш. Возвращает результат поиска и таблицу данных.
+---@param keycombo_or_id table|integer
+---@return boolean,table
 function mod.getHotKey(keycombo_or_id)
    local bool = false
    local data = {}
@@ -279,9 +286,10 @@ function mod.getHotKey(keycombo_or_id)
    return bool, data
 end
 
---[[
-   Изменяет комбо клавиш для хоткея. Возвращает результат изменения.
-]]
+---Изменяет комбо клавиш для хоткея. Возвращает результат изменения.
+---@param id integer
+---@param keycombo table
+---@return boolean
 function mod.changeHotKey(id, keycombo)
    local bool = false
    for k, v in ipairs(tHotKeys) do
@@ -293,9 +301,9 @@ function mod.changeHotKey(id, keycombo)
    return bool
 end
 
---[[
-   Удаляет комбо. Первым параметром возвращает результат удаления, вторым количество удаленных комбо.
-]]
+--- Удаляет комбо. Первым параметром возвращает результат удаления, вторым количество удаленных комбо.
+---@param keycombo_or_id table|integer
+---@return boolean,integer
 function mod.unRegisterHotKey(keycombo_or_id)
    local bool = false
    local count = 0
@@ -323,9 +331,10 @@ function mod.unRegisterHotKey(keycombo_or_id)
    return bool, count
 end
 
---[[
-   Проверяет активен ли хоткей keycombo в списке keylist. Если опущен keylist - использует текущие нажатые клавиши.
-]]
+--- Проверяет активен ли хоткей keycombo в списке keylist. Если опущен keylist - использует текущие нажатые клавиши.
+---@param keycombo table
+---@param keylist table
+---@return boolean
 function mod.isKeyComboExist(keycombo, keylist)
    keylist = keylist or tCurKeys
    local b = false
@@ -342,9 +351,10 @@ function mod.isKeyComboExist(keycombo, keylist)
    return b
 end
 
---[[
-   Проверяет активен ли хоткей keycombo в списке keylist. Если опущен keylist - использует текущие нажатые клавиши.
-]]
+--- Сравнивает два комбо
+---@param keycombo table
+---@param keycombotwo table
+---@return boolean
 function mod.compareKeys(keycombo, keycombotwo)
    local b = true
    for k, v in ipairs(keycombo) do
@@ -356,9 +366,10 @@ function mod.compareKeys(keycombo, keycombotwo)
    return b
 end
 
---[[
-   Ищет keyid в списке keylist. В отличии от isKeyComboExist не ищет несколько клавиш, а только одну с указанной датой.
-]]
+--- Ищет keyid в списке keylist. В отличии от isKeyComboExist не ищет несколько клавиш, а только одну с указанной датой.
+---@param keyid integer
+---@param keylist table
+---@return boolean
 function mod.isKeyExist(keyid, keylist)
    keylist = keylist or tCurKeys
    for k, v in ipairs(keylist) do
@@ -369,9 +380,10 @@ function mod.isKeyExist(keyid, keylist)
    return false
 end
 
---[[
-   Ищет keyid в списке keylist. В отличии от isKeyComboExist не ищет несколько клавиш, а только одну с указанной датой.
-]]
+--- Ищет несколько id из списка keyids в keylist. Возвращает истину если найден хотябы один id из keyids
+---@param keyids table
+---@param keylist table
+---@return boolean
 function mod.isKeysExist(keyids, keylist)
    keylist = keylist or tCurKeys
    for k, v in ipairs(keyids) do
@@ -384,9 +396,10 @@ function mod.isKeysExist(keyids, keylist)
    return false
 end
 
---[[
-   Аналог isKeyExist, но возвращает позицию в keylist если находит.
-]]
+--- Аналог isKeyExist, но возвращает позицию в keylist если находит.
+---@param keyid integer
+---@param keylist table
+---@return integer|nil
 function mod.getKeyPosition(keyid, keylist)
    keylist = keylist or tCurKeys
    for k, v in ipairs(keylist) do
@@ -397,9 +410,11 @@ function mod.getKeyPosition(keyid, keylist)
    return nil
 end
 
---[[
-   Системная функция. Получает расширеные версии Alt, Shift, Ctrl на основе сканкода и расширения.
-]]
+--- Получает расширеные версии Alt, Shift, Ctrl на основе сканкода и расширения.
+---@param keyid integer
+---@param scancode integer
+---@param extend integer
+---@return integer|nil
 function mod.getExtendedKeys(keyid, scancode, extend)
    local newKeyId = nil
    if keyid == vkeys.VK_MENU then
@@ -424,9 +439,11 @@ function mod.getExtendedKeys(keyid, scancode, extend)
    return newKeyId
 end
 
---[[
-   Возвращает список текущих нажатых клавиш в формате скрипта. В качестве аргумента принимает то какие нужно выводить данные. Только ИД, нужно ли название клавиш
-]]
+--- Возвращает список текущих нажатых клавиш в формате скрипта. В качестве аргумента принимает то какие нужно выводить данные. Только ИД, нужно ли название клавиш
+---@param keyname boolean
+---@param keyscan boolean
+---@param keyex boolean
+---@return table
 function mod.getKeys(keyname, keyscan, keyex)
    keyname = keyname or false
    local szKeys = {}
@@ -436,9 +453,8 @@ function mod.getKeys(keyname, keyscan, keyex)
    return szKeys
 end
 
---[[
-   Получить количество активных клавиш.
-]]
+--- Возвращает колличество нажатых клавиш
+---@return integer
 function mod.getCountKeys()
    return #tCurKeys
 end
