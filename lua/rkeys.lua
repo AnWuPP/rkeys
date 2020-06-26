@@ -47,6 +47,7 @@
 local vkeys = require 'vkeys'
 local wm = require 'windows.message'
 local bitex = require 'bitex'
+local ffi = require 'ffi'
 
 local tCurKeys = {}
 local tModKeys = { [vkeys.VK_MENU] = true, [vkeys.VK_SHIFT] = true, [vkeys.VK_CONTROL] = true }
@@ -67,7 +68,8 @@ local tMessageTrigger = {
                         [wm.WM_MBUTTONUP] = true,
                         [wm.WM_XBUTTONDOWN] = true,
                         [wm.WM_XBUTTONDBLCLK] = true,
-                        [wm.WM_XBUTTONUP] = true
+                        [wm.WM_XBUTTONUP] = true,
+                        [wm.WM_MOUSEWHEEL] = true
                      }
 local tRewriteMouseKeys = {
                            [wm.WM_LBUTTONDOWN] = vkeys.VK_LBUTTON,
@@ -77,10 +79,15 @@ local tRewriteMouseKeys = {
                            [wm.WM_MBUTTONDOWN] = vkeys.VK_MBUTTON,
                            [wm.WM_MBUTTONUP] = vkeys.VK_MBUTTON,
                         }
+local tXButtonMessage = {
+                           [wm.WM_MBUTTONUP] = true,
+                           [wm.WM_XBUTTONDOWN] = true,
+                           [wm.WM_XBUTTONDBLCLK] = true,
+                        }
 local tXButtonMouseData = {
-   vkeys.VK_XBUTTON1,
-   vkeys.VK_XBUTTON2
-}
+                           vkeys.VK_XBUTTON1,
+                           vkeys.VK_XBUTTON2
+                        }
 local tDownMessages = {
                         [wm.WM_KEYDOWN] = true,
                         [wm.WM_SYSKEYDOWN] = true,
@@ -92,6 +99,7 @@ local tDownMessages = {
                         [wm.WM_RBUTTONDBLCLK] = true,
                         [wm.WM_MBUTTONDBLCLK] = true,
                         [wm.WM_XBUTTONDBLCLK] = true,
+                        [wm.WM_MOUSEWHEEL] = true
                      }
 local tHotKeys = {}
 local tActKeys = {}
@@ -100,8 +108,27 @@ local mod = {}
 mod._VERSION = "2.0.0"
 mod._MODKEYS = tModKeys
 mod._LOCKKEYS = false
+mod.vkeys = {
+   VK_WHEELDOWN = 0x100,
+   VK_WHEELUP = 0x101
+}
+mod.vkeys.names = {
+   [mod.vkeys.VK_WHEELDOWN] = "Mouse Wheel Down",
+   [mod.vkeys.VK_WHEELUP] = "Mouse Wheel Up",
+}
+local id_to_name = function(id)
+   local name = vkeys.id_to_name(id) or mod.vkeys.names[id]
+   return name
+end
 local HIWORD = function(param)
 	return bit.rshift(bit.band(param, 0xffff0000), 16);
+end
+local splitsigned = function(n) -- СПАСИБО WINAPI.lua и GITHUB и Chat mimgui
+	n = tonumber(n)
+	local x, y = bit.band(n, 0xffff), bit.rshift(n, 16)
+	if x >= 0x8000 then x = x-0xffff end
+	if y >= 0x8000 then y = y-0xffff end
+	return x, y
 end
 
 addEventHandler("onWindowMessage", function (message, wparam, lparam)
@@ -109,9 +136,16 @@ addEventHandler("onWindowMessage", function (message, wparam, lparam)
       local scancode = bitex.bextract(lparam, 16, 8)
       local keystate = bitex.bextract(lparam, 30, 1)
       local keyex = bitex.bextract(lparam, 24, 1)
-      if message == wm.WM_XBUTTONDOWN or message == wm.WM_XBUTTONUP or message == wm.WM_XBUTTONDBLCLK then
+      if tXButtonMessage[message] then
          local btn = HIWORD(wparam)
          wparam = tXButtonMouseData[btn]
+      elseif message == wm.WM_MOUSEWHEEL then
+         local btn, delta = splitsigned(ffi.cast('int32_t', wparam))
+         if delta < 0 then
+            wparam = mod.vkeys.VK_WHEELDOWN
+         elseif delta > 0 then
+            wparam = mod.vkeys.VK_WHEELUP
+         end
       elseif tRewriteMouseKeys[message] then
          wparam = tRewriteMouseKeys[message]
       end
@@ -145,7 +179,9 @@ addEventHandler("onWindowMessage", function (message, wparam, lparam)
          end
       else
          for k, v in ipairs(tHotKeys) do
-            if v.aType == 3 and keystate == 1 and mod.isKeyComboExist(v.keys) then
+            if v.aType == 3 and keystate == 1 and mod.isKeyComboExist(v.keys)
+               and (mod.onHotKey == nil or (mod.onHotKey and mod.onHotKey(v.id, v) ~= false))
+               then
                v.callback(v)
             end
          end
@@ -160,10 +196,14 @@ addEventHandler("onWindowMessage", function (message, wparam, lparam)
                end
             end
          end
-         for k, v in ipairs(tHotKeys) do
-            if v.aType == 2 or tActKeys[v.id] and not mod.isKeyComboExist(v.keys) then
-               tActKeys[v.id] = nil
-            end
+      end
+      if message == wm.WM_MOUSEWHEEL then
+         local pos = mod.getKeyPosition(wparam)
+         table.remove(tCurKeys, pos)
+      end
+      for k, v in ipairs(tHotKeys) do
+         if v.aType == 2 or tActKeys[v.id] and not mod.isKeyComboExist(v.keys) then
+            tActKeys[v.id] = nil
          end
       end
    elseif message == wm.WM_KILLFOCUS then
@@ -171,9 +211,11 @@ addEventHandler("onWindowMessage", function (message, wparam, lparam)
    end
 end)
 
---[[
-   Регистрирует новый комбо. Возращает индефикатор нового хоткея.
-]]
+---@param keycombo table
+---@param activationType integer
+---@param isBlock_or_callback boolean|function
+---@param callback function
+---@return integer
 function mod.registerHotKey(keycombo, activationType, isBlock_or_callback, callback)
    local newId = hkId + 1
    tHotKeys[#tHotKeys + 1] = {
@@ -389,7 +431,7 @@ function mod.getKeys(keyname, keyscan, keyex)
    keyname = keyname or false
    local szKeys = {}
    for k, v in ipairs(tCurKeys) do
-      table.insert(szKeys, ("%s%s"):format(tostring(v), (keyname and ":" .. vkeys.id_to_name(v) or "")))
+      table.insert(szKeys, ("%s%s"):format(tostring(v), (keyname and ":" .. id_to_name(v) or "")))
    end
    return szKeys
 end
