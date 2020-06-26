@@ -2,7 +2,7 @@ package = "rkeys"
 version = "2.1.0-1"
 source = {
    url = "git+https://github.com/DonHomka/rkeys.git",
-   tag = "2.1.0"
+   tag = "v2.1.0"
 }
 description = {
    summary = "### Начало работы ```lua local vkeys = require 'vkeys' -- Библиотека с кодами клавиш в удобном формате local rkeys = require 'rkeys' -- Подключаем RKeys ``` ### Регистрация клавиш ```lua -- Регистрируем сочетание клавиш Left Shift + W.",
